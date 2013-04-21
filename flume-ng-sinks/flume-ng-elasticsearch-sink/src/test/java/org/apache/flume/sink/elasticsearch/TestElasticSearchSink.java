@@ -24,10 +24,12 @@ import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.DEF
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.HOSTNAMES;
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.INDEX_NAME;
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.INDEX_TYPE;
+import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.SERIALIZER;
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.TTL;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
+import java.io.IOException;
 import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
@@ -36,10 +38,15 @@ import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.Sink.Status;
 import org.apache.flume.Transaction;
+import org.apache.flume.conf.ComponentConfiguration;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.event.EventBuilder;
+import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Requests;
 import org.elasticsearch.common.UUID;
+import org.elasticsearch.common.bytes.BytesArray;
+import org.elasticsearch.common.bytes.BytesReference;
+import org.elasticsearch.common.io.BytesStream;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.junit.After;
 import org.junit.Before;
@@ -220,5 +227,71 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
         new InetSocketTransportAddress("10.5.5.29", 9302) };
 
     assertArrayEquals(expected, fixture.getServerAddresses());
+  }
+
+  @Test
+  public void shouldAllowCustomElasticSearchIndexRequestBuilderFactory()
+      throws Exception {
+
+    parameters.put(SERIALIZER,
+        CustomElasticSearchIndexRequestBuilderer.class.getName());
+
+    Configurables.configure(fixture, new Context(parameters));
+    Channel channel = bindAndStartChannel(fixture);
+    Transaction tx = channel.getTransaction();
+    tx.begin();
+    String body = "{ foo: \"bar\" }";
+    Event event = EventBuilder.withBody(body.getBytes());
+    channel.put(event);
+    tx.commit();
+    tx.close();
+
+    fixture.process();
+    fixture.stop();
+
+    assertEquals(fixture.getIndexName(),
+        CustomElasticSearchIndexRequestBuilderer.actualIndexName);
+    assertEquals(fixture.getIndexType(),
+            CustomElasticSearchIndexRequestBuilderer.actualIndexType);
+    assertArrayEquals(event.getBody(),
+            CustomElasticSearchIndexRequestBuilderer.actualEventBody);
+  }
+
+  public static final class CustomElasticSearchIndexRequestBuilderer
+      implements ElasticSearchIndexRequestBuilderer,
+          ElasticSearchEventSerializer {
+
+    static String actualIndexName, actualIndexType;
+    static byte[] actualEventBody;
+
+    @Override
+    public void prepareIndexRequest(IndexRequestBuilder indexRequestBuilder, String indexName,
+        String indexType, Event event) throws IOException {
+      actualIndexName = indexName;
+      actualIndexType = indexType;
+      actualEventBody = event.getBody();
+      indexRequestBuilder.setIndex(indexName).setType(indexType)
+        .setSource(getContentBuilder(event).bytes());
+    }
+
+    @Override
+    public void configure(Context arg0) {
+      // no-op
+    }
+
+    @Override
+    public void configure(ComponentConfiguration arg0) {
+      // no-op
+    }
+
+    @Override
+    public BytesStream getContentBuilder(final Event event) throws IOException {
+      return new BytesStream() {
+        @Override
+        public BytesReference bytes() {
+          return new BytesArray(event.getBody());
+        }
+      };
+    }
   }
 }
