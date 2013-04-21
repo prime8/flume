@@ -55,7 +55,6 @@ import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.common.settings.ImmutableSettings;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
-import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.node.Node;
 import org.elasticsearch.node.NodeBuilder;
 import org.slf4j.Logger;
@@ -108,7 +107,7 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
 
   private Node node;
   private Client client;
-  private ElasticSearchEventSerializer serializer;
+  private ElasticSearchIndexRequestBuilderer indexRequestBuilderer;
   private SinkCounter sinkCounter;
 
   /**
@@ -175,15 +174,15 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
           break;
         }
 
-        XContentBuilder builder = serializer.getContentBuilder(event);
-        IndexRequestBuilder request = client.prepareIndex(indexName, indexType)
-            .setSource(builder);
+        IndexRequestBuilder indexRequest = client.prepareIndex();
+        indexRequestBuilderer.prepareIndexRequest(
+            indexRequest, indexName, indexType, event);
 
         if (ttlMs > 0) {
-          request.setTTL(ttlMs);
+          indexRequest.setTTL(ttlMs);
         }
 
-        bulkRequest.add(request);
+        bulkRequest.add(indexRequest);
       }
 
       int size = bulkRequest.numberOfActions();
@@ -293,8 +292,13 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
       @SuppressWarnings("unchecked")
       Class<? extends ElasticSearchEventSerializer> clazz = (Class<? extends ElasticSearchEventSerializer>) Class
           .forName(serializerClazz);
-      serializer = clazz.newInstance();
+      ElasticSearchEventSerializer serializer = clazz.newInstance();
       serializer.configure(serializerContext);
+      if (serializer instanceof ElasticSearchIndexRequestBuilderer) {
+          indexRequestBuilderer = (ElasticSearchIndexRequestBuilderer) serializer;
+      } else {
+          indexRequestBuilderer = new EventSerializerIndexRequestBuilderer(serializer);
+      }
     } catch (Exception e) {
       logger.error("Could not instantiate event serializer.", e);
       Throwables.propagate(e);
