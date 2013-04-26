@@ -33,11 +33,9 @@ import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.SER
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.TTL;
 
 import java.util.Arrays;
-import java.util.Date;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.commons.lang.time.FastDateFormat;
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
 import org.apache.flume.CounterGroup;
@@ -89,8 +87,6 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
   private static final Logger logger = LoggerFactory
       .getLogger(ElasticSearchSink.class);
 
-  static final FastDateFormat df = FastDateFormat.getInstance("yyyy-MM-dd");
-
   // Used for testing
   private boolean isLocal = false;
   private final CounterGroup counterGroup = new CounterGroup();
@@ -107,7 +103,7 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
 
   private Node node;
   private Client client;
-  private ElasticSearchIndexRequestBuilderer indexRequestBuilderer;
+  private ElasticSearchIndexRequestBuilderFactory indexRequestFactory;
   private SinkCounter sinkCounter;
 
   /**
@@ -144,7 +140,7 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
 
   @VisibleForTesting
   String getIndexName() {
-    return indexName + "-" + df.format(new Date());
+    return indexName;
   }
 
   @VisibleForTesting
@@ -165,7 +161,6 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
     Transaction txn = channel.getTransaction();
     try {
       txn.begin();
-      String indexName = getIndexName();
       BulkRequestBuilder bulkRequest = client.prepareBulk();
       for (int i = 0; i < batchSize; i++) {
         Event event = channel.take();
@@ -174,9 +169,9 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
           break;
         }
 
-        IndexRequestBuilder indexRequest = client.prepareIndex();
-        indexRequestBuilderer.prepareIndexRequest(
-            indexRequest, indexName, indexType, event);
+        IndexRequestBuilder indexRequest =
+            indexRequestFactory.createIndexRequest(
+                client, indexName, indexType, event);
 
         if (ttlMs > 0) {
           indexRequest.setTTL(ttlMs);
@@ -294,10 +289,10 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
           .forName(serializerClazz);
       ElasticSearchEventSerializer serializer = clazz.newInstance();
       serializer.configure(serializerContext);
-      if (serializer instanceof ElasticSearchIndexRequestBuilderer) {
-          indexRequestBuilderer = (ElasticSearchIndexRequestBuilderer) serializer;
+      if (serializer instanceof ElasticSearchIndexRequestBuilderFactory) {
+        indexRequestFactory = (ElasticSearchIndexRequestBuilderFactory) serializer;
       } else {
-          indexRequestBuilderer = new EventSerializerIndexRequestBuilderer(serializer);
+        indexRequestFactory = new EventSerializerIndexRequestBuilderFactory(serializer);
       }
     } catch (Exception e) {
       logger.error("Could not instantiate event serializer.", e);

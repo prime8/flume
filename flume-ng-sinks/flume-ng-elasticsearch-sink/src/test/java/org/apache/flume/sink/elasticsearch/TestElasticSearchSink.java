@@ -30,9 +30,10 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
-import java.util.Date;
+import java.util.TimeZone;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang.time.FastDateFormat;
 import org.apache.flume.Channel;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
@@ -119,6 +120,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
     assertMatchAllQuery(numberOfEvents, events);
     assertBodyQuery(5, events);
   }
+
   @Test
   public void shouldIndexFiveEventsOverThreeBatches() throws Exception {
     parameters.put(BATCH_SIZE, "2");
@@ -170,9 +172,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
         "10.5.5.27", DEFAULT_PORT) };
 
     assertEquals("testing-cluster-name", fixture.getClusterName());
-    assertEquals(
-        "testing-index-name-" + ElasticSearchSink.df.format(new Date()),
-        fixture.getIndexName());
+    assertEquals("testing-index-name", fixture.getIndexName());
     assertEquals("testing-index-type", fixture.getIndexType());
     assertEquals(TimeUnit.DAYS.toMillis(10), fixture.getTTLMs());
     assertArrayEquals(expected, fixture.getServerAddresses());
@@ -191,9 +191,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
     InetSocketTransportAddress[] expected = { new InetSocketTransportAddress(
         "10.5.5.27", DEFAULT_PORT) };
 
-    assertEquals(
-        DEFAULT_INDEX_NAME + "-" + ElasticSearchSink.df.format(new Date()),
-        fixture.getIndexName());
+    assertEquals(DEFAULT_INDEX_NAME, fixture.getIndexName());
     assertEquals(DEFAULT_INDEX_TYPE, fixture.getIndexType());
     assertEquals(DEFAULT_CLUSTER_NAME, fixture.getClusterName());
     assertArrayEquals(expected, fixture.getServerAddresses());
@@ -234,7 +232,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
       throws Exception {
 
     parameters.put(SERIALIZER,
-        CustomElasticSearchIndexRequestBuilderer.class.getName());
+        CustomElasticSearchIndexRequestBuilderFactory.class.getName());
 
     Configurables.configure(fixture, new Context(parameters));
     Channel channel = bindAndStartChannel(fixture);
@@ -249,39 +247,34 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
     fixture.process();
     fixture.stop();
 
-    assertEquals(fixture.getIndexName(),
-        CustomElasticSearchIndexRequestBuilderer.actualIndexName);
+    assertEquals(fixture.getIndexName()+"-05_17_36_789",
+        CustomElasticSearchIndexRequestBuilderFactory.actualIndexName);
     assertEquals(fixture.getIndexType(),
-            CustomElasticSearchIndexRequestBuilderer.actualIndexType);
+        CustomElasticSearchIndexRequestBuilderFactory.actualIndexType);
     assertArrayEquals(event.getBody(),
-            CustomElasticSearchIndexRequestBuilderer.actualEventBody);
+        CustomElasticSearchIndexRequestBuilderFactory.actualEventBody);
   }
 
-  public static final class CustomElasticSearchIndexRequestBuilderer
-      implements ElasticSearchIndexRequestBuilderer,
-          ElasticSearchEventSerializer {
+  public static final class CustomElasticSearchIndexRequestBuilderFactory
+      extends AbstractElasticSearchIndexRequestBuilderFactory
+      implements ElasticSearchEventSerializer {
 
     static String actualIndexName, actualIndexType;
     static byte[] actualEventBody;
 
+    public CustomElasticSearchIndexRequestBuilderFactory() {
+      super(FastDateFormat.getInstance("HH_mm_ss_SSS",
+          TimeZone.getTimeZone("EST5EDT")));
+    }
+
     @Override
-    public void prepareIndexRequest(IndexRequestBuilder indexRequestBuilder, String indexName,
-        String indexType, Event event) throws IOException {
+    protected void prepareIndexRequest(IndexRequestBuilder indexRequest,
+        String indexName, String indexType, Event event) throws IOException {
       actualIndexName = indexName;
       actualIndexType = indexType;
       actualEventBody = event.getBody();
-      indexRequestBuilder.setIndex(indexName).setType(indexType)
-        .setSource(getContentBuilder(event).bytes());
-    }
-
-    @Override
-    public void configure(Context arg0) {
-      // no-op
-    }
-
-    @Override
-    public void configure(ComponentConfiguration arg0) {
-      // no-op
+      indexRequest.setIndex(indexName).setType(indexType)
+          .setSource(getContentBuilder(event).bytes());
     }
 
     @Override
@@ -292,6 +285,15 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
           return new BytesArray(event.getBody());
         }
       };
+    }
+
+    @Override
+    public void configure(Context arg0) {
+    }
+
+    @Override
+    public void configure(ComponentConfiguration arg0) {
+        // no-op
     }
   }
 }
