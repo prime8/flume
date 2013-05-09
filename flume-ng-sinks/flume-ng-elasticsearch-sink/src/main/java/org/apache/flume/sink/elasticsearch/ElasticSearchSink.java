@@ -285,15 +285,20 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
 
     try {
       @SuppressWarnings("unchecked")
-      Class<? extends ElasticSearchEventSerializer> clazz = (Class<? extends ElasticSearchEventSerializer>) Class
+      Class<? extends Configurable> clazz = (Class<? extends Configurable>) Class
           .forName(serializerClazz);
-      ElasticSearchEventSerializer serializer = clazz.newInstance();
-      serializer.configure(serializerContext);
+      Configurable serializer = clazz.newInstance();
       if (serializer instanceof ElasticSearchIndexRequestBuilderFactory) {
         indexRequestFactory = (ElasticSearchIndexRequestBuilderFactory) serializer;
+      } else if (serializer instanceof ElasticSearchEventSerializer){
+        indexRequestFactory = new EventSerializerIndexRequestBuilderFactory(
+            (ElasticSearchEventSerializer) serializer);
       } else {
-        indexRequestFactory = new EventSerializerIndexRequestBuilderFactory(serializer);
+          throw new IllegalArgumentException(
+              serializerClazz + " is neither an ElasticSearchEventSerializer"
+              + " nor an ElasticSearchIndexRequestBuilderFactory.");
       }
+      serializer.configure(serializerContext);
     } catch (Exception e) {
       logger.error("Could not instantiate event serializer.", e);
       Throwables.propagate(e);

@@ -40,14 +40,12 @@ import org.apache.flume.Event;
 import org.apache.flume.Sink.Status;
 import org.apache.flume.Transaction;
 import org.apache.flume.conf.ComponentConfiguration;
+import org.apache.flume.conf.Configurable;
 import org.apache.flume.conf.Configurables;
 import org.apache.flume.event.EventBuilder;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Requests;
 import org.elasticsearch.common.UUID;
-import org.elasticsearch.common.bytes.BytesArray;
-import org.elasticsearch.common.bytes.BytesReference;
-import org.elasticsearch.common.io.BytesStream;
 import org.elasticsearch.common.transport.InetSocketTransportAddress;
 import org.junit.After;
 import org.junit.Before;
@@ -256,8 +254,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
   }
 
   public static final class CustomElasticSearchIndexRequestBuilderFactory
-      extends AbstractElasticSearchIndexRequestBuilderFactory
-      implements ElasticSearchEventSerializer {
+      extends AbstractElasticSearchIndexRequestBuilderFactory {
 
     static String actualIndexName, actualIndexType;
     static byte[] actualEventBody;
@@ -274,25 +271,42 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
       actualIndexType = indexType;
       actualEventBody = event.getBody();
       indexRequest.setIndex(indexName).setType(indexType)
-          .setSource(getContentBuilder(event).bytes());
-    }
-
-    @Override
-    public BytesStream getContentBuilder(final Event event) throws IOException {
-      return new BytesStream() {
-        @Override
-        public BytesReference bytes() {
-          return new BytesArray(event.getBody());
-        }
-      };
+          .setSource(event.getBody());
     }
 
     @Override
     public void configure(Context arg0) {
+        // no-op
     }
 
     @Override
     public void configure(ComponentConfiguration arg0) {
+        // no-op
+    }
+  }
+
+  @Test
+  public void shouldFailToConfigureWithInvalidSerializerClass()
+      throws Exception {
+
+    parameters.put(SERIALIZER, "java.lang.String");
+    try {
+      Configurables.configure(fixture, new Context(parameters));
+    } catch (ClassCastException e) {
+      // expected
+    }
+
+    parameters.put(SERIALIZER, FakeConfigurable.class.getName());
+    try {
+      Configurables.configure(fixture, new Context(parameters));
+    } catch (IllegalArgumentException e) {
+      // expected
+    }
+  }
+
+  public static class FakeConfigurable implements Configurable {
+    @Override
+    public void configure(Context arg0) {
         // no-op
     }
   }

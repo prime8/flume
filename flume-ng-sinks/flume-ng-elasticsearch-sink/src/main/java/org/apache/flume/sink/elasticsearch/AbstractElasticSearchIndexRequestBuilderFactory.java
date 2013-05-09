@@ -23,7 +23,11 @@ import java.util.Map;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.time.FastDateFormat;
+import org.apache.flume.Context;
 import org.apache.flume.Event;
+import org.apache.flume.conf.ComponentConfiguration;
+import org.apache.flume.conf.Configurable;
+import org.apache.flume.conf.ConfigurableComponent;
 import org.apache.flume.event.SimpleEvent;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
@@ -53,6 +57,18 @@ public abstract class AbstractElasticSearchIndexRequestBuilderFactory
     FastDateFormat fastDateFormat) {
     this.fastDateFormat = fastDateFormat;
   }
+
+  /**
+   * @see Configurable
+   */
+  @Override
+  public abstract void configure(Context arg0);
+
+  /**
+   * @see ConfigurableComponent
+   */
+  @Override
+  public abstract void configure(ComponentConfiguration arg0);
 
   /**
    * Creates and prepares an {@link IndexRequestBuilder} from the supplied

@@ -20,7 +20,9 @@ package org.apache.flume.sink.elasticsearch;
 
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.Map;
@@ -28,6 +30,7 @@ import java.util.Map;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.conf.ComponentConfiguration;
+import org.apache.flume.conf.sink.SinkConfiguration;
 import org.apache.flume.event.SimpleEvent;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
@@ -45,9 +48,11 @@ public class TestElasticSearchIndexRequestBuilderFactory
 
   private EventSerializerIndexRequestBuilderFactory factory;
 
+  private FakeEventSerializer serializer;
+
   @Before
   public void setupFactory() throws Exception {
-    ElasticSearchEventSerializer serializer = new FakeEventSerializer();
+    serializer = new FakeEventSerializer();
     factory = new EventSerializerIndexRequestBuilderFactory(serializer) {
       @Override
       IndexRequestBuilder prepareIndex(Client client) {
@@ -151,11 +156,24 @@ public class TestElasticSearchIndexRequestBuilderFactory
         + ElasticSearchIndexRequestBuilderFactory.df.format(1213141516L),
       indexRequestBuilder.request().index());
   }
+
+  @Test
+  public void shouldConfigureEventSerializer() throws Exception {
+    assertFalse(serializer.configuredWithContext);
+    factory.configure(new Context());
+    assertTrue(serializer.configuredWithContext);
+
+    assertFalse(serializer.configuredWithComponentConfiguration);
+    factory.configure(new SinkConfiguration("name"));
+    assertTrue(serializer.configuredWithComponentConfiguration);
+  }
+
 }
 
 class FakeEventSerializer implements ElasticSearchEventSerializer {
 
   static final byte[] FAKE_BYTES = new byte[] {9,8,7,6};
+  boolean configuredWithContext, configuredWithComponentConfiguration;
 
   @Override
   public BytesStream getContentBuilder(Event event) throws IOException {
@@ -166,11 +184,11 @@ class FakeEventSerializer implements ElasticSearchEventSerializer {
 
   @Override
   public void configure(Context arg0) {
-    //no-op
+    configuredWithContext = true;
   }
 
   @Override
   public void configure(ComponentConfiguration arg0) {
-    //no-op
+    configuredWithComponentConfiguration = true;
   }
 }

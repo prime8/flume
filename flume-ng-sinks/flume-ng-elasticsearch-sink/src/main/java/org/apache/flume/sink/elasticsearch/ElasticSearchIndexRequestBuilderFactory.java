@@ -23,14 +23,18 @@ import java.util.TimeZone;
 
 import org.apache.commons.lang.time.FastDateFormat;
 import org.apache.flume.Event;
+import org.apache.flume.conf.Configurable;
+import org.apache.flume.conf.ConfigurableComponent;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.client.Client;
 
 /**
  * Interface for creating ElasticSearch {@link IndexRequestBuilder}
- * instances from serialized flume events.
+ * instances from serialized flume events. This is configurable, so any config
+ * params required should be taken through this.
  */
-public interface ElasticSearchIndexRequestBuilderFactory {
+public interface ElasticSearchIndexRequestBuilderFactory extends Configurable,
+    ConfigurableComponent {
 
   static final FastDateFormat df = FastDateFormat.getInstance("yyyy-MM-dd",
       TimeZone.getTimeZone("Etc/UTC"));

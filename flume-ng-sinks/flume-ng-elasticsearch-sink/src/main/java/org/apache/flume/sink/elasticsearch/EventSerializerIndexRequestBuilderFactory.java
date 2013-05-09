@@ -21,7 +21,9 @@ package org.apache.flume.sink.elasticsearch;
 import java.io.IOException;
 
 import org.apache.commons.lang.time.FastDateFormat;
+import org.apache.flume.Context;
 import org.apache.flume.Event;
+import org.apache.flume.conf.ComponentConfiguration;
 import org.elasticsearch.action.index.IndexRequestBuilder;
 import org.elasticsearch.common.io.BytesStream;
 
@@ -44,6 +46,16 @@ public class EventSerializerIndexRequestBuilderFactory
       ElasticSearchEventSerializer serializer, FastDateFormat fdf) {
     super(fdf);
     this.serializer = serializer;
+  }
+
+  @Override
+  public void configure(Context context) {
+    serializer.configure(context);
+  }
+
+  @Override
+  public void configure(ComponentConfiguration config) {
+    serializer.configure(config);
   }
 
   @Override
