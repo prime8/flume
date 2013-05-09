@@ -298,7 +298,7 @@ public class ElasticSearchSink extends AbstractSink implements Configurable {
               serializerClazz + " is neither an ElasticSearchEventSerializer"
               + " nor an ElasticSearchIndexRequestBuilderFactory.");
       }
-      serializer.configure(serializerContext);
+      indexRequestFactory.configure(serializerContext);
     } catch (Exception e) {
       logger.error("Could not instantiate event serializer.", e);
       Throwables.propagate(e);

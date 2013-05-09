@@ -28,6 +28,7 @@ import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.SER
 import static org.apache.flume.sink.elasticsearch.ElasticSearchSinkConstants.TTL;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.TimeZone;
@@ -233,6 +234,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
         CustomElasticSearchIndexRequestBuilderFactory.class.getName());
 
     Configurables.configure(fixture, new Context(parameters));
+
     Channel channel = bindAndStartChannel(fixture);
     Transaction tx = channel.getTransaction();
     tx.begin();
@@ -251,6 +253,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
         CustomElasticSearchIndexRequestBuilderFactory.actualIndexType);
     assertArrayEquals(event.getBody(),
         CustomElasticSearchIndexRequestBuilderFactory.actualEventBody);
+    assertTrue(CustomElasticSearchIndexRequestBuilderFactory.hasContext);
   }
 
   public static final class CustomElasticSearchIndexRequestBuilderFactory
@@ -258,6 +261,7 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
 
     static String actualIndexName, actualIndexType;
     static byte[] actualEventBody;
+    static boolean hasContext;
 
     public CustomElasticSearchIndexRequestBuilderFactory() {
       super(FastDateFormat.getInstance("HH_mm_ss_SSS",
@@ -276,12 +280,12 @@ public class TestElasticSearchSink extends AbstractElasticSearchSinkTest {
 
     @Override
     public void configure(Context arg0) {
-        // no-op
+      hasContext = true;
     }
 
     @Override
     public void configure(ComponentConfiguration arg0) {
-        // no-op
+      //no-op
     }
   }
 
