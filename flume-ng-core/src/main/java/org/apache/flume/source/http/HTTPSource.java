@@ -19,23 +19,27 @@ package org.apache.flume.source.http;
 
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.apache.flume.ChannelException;
 import org.apache.flume.Context;
 import org.apache.flume.Event;
 import org.apache.flume.EventDrivenSource;
 import org.apache.flume.conf.Configurable;
 import org.apache.flume.source.AbstractSource;
+import org.mortbay.jetty.Connector;
 import org.mortbay.jetty.Server;
+import org.mortbay.jetty.bio.SocketConnector;
 import org.mortbay.jetty.servlet.ServletHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
 
 /**
  * A source which accepts Flume Events by HTTP POST and GET. GET should be used
@@ -79,16 +83,19 @@ public class HTTPSource extends AbstractSource implements
   private static final Logger LOG = LoggerFactory.getLogger(HTTPSource.class);
   private volatile Integer port;
   private volatile Server srv;
+  private volatile String host;
   private HTTPSourceHandler handler;
 
   @Override
   public void configure(Context context) {
     try {
       port = context.getInteger(HTTPSourceConfigurationConstants.CONFIG_PORT);
-      checkPort();
+      host = context.getString(HTTPSourceConfigurationConstants.CONFIG_BIND,
+        HTTPSourceConfigurationConstants.DEFAULT_BIND);
+      checkHostAndPort();
       String handlerClassName = context.getString(
               HTTPSourceConfigurationConstants.CONFIG_HANDLER,
-              HTTPSourceConfigurationConstants.DEFAULT_HANDLER);
+              HTTPSourceConfigurationConstants.DEFAULT_HANDLER).trim();
       @SuppressWarnings("unchecked")
       Class<? extends HTTPSourceHandler> clazz =
               (Class<? extends HTTPSourceHandler>)
@@ -113,14 +120,24 @@ public class HTTPSource extends AbstractSource implements
     }
   }
 
-  @Override
+  private void checkHostAndPort() {
+    Preconditions.checkState(host != null && !host.isEmpty(),
+      "HTTPSource hostname specified is empty");
+    Preconditions.checkNotNull(port, "HTTPSource requires a port number to be"
+      + " specified");
+  }
+
+    @Override
   public void start() {
-    checkPort();
     Preconditions.checkState(srv == null,
             "Running HTTP Server found in source: " + getName()
             + " before I started one."
             + "Will not attempt to start.");
-    srv = new Server(port);
+    srv = new Server();
+    SocketConnector connector = new SocketConnector();
+    connector.setPort(port);
+    connector.setHost(host);
+    srv.setConnectors(new Connector[] { connector });
     try {
       org.mortbay.jetty.servlet.Context root =
               new org.mortbay.jetty.servlet.Context(
@@ -147,11 +164,6 @@ public class HTTPSource extends AbstractSource implements
     }
   }
 
-  private void checkPort() {
-    Preconditions.checkNotNull(port, "HTTPSource requires a port number to be"
-            + "specified");
-  }
-
   private class FlumeHTTPServlet extends HttpServlet {
 
     private static final long serialVersionUID = 4891924863218790344L;
@@ -159,7 +171,7 @@ public class HTTPSource extends AbstractSource implements
     @Override
     public void doPost(HttpServletRequest request, HttpServletResponse response)
             throws IOException {
-      List<Event> events = new ArrayList<Event>(0); //create empty list
+      List<Event> events = Collections.emptyList(); //create empty list
       try {
         events = handler.getEvents(request);
       } catch (HTTPBadRequestException ex) {
