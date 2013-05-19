@@ -21,16 +21,17 @@ package org.apache.flume.clients.log4jappender;
 import java.nio.charset.Charset;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 import org.apache.flume.Event;
 import org.apache.flume.EventDeliveryException;
 import org.apache.flume.FlumeException;
 import org.apache.flume.api.RpcClient;
+import org.apache.flume.api.RpcClientConfigurationConstants;
 import org.apache.flume.api.RpcClientFactory;
 import org.apache.flume.event.EventBuilder;
 
 import org.apache.log4j.AppenderSkeleton;
-import org.apache.log4j.Layout;
 import org.apache.log4j.helpers.LogLog;
 import org.apache.log4j.spi.LoggingEvent;
 
@@ -63,6 +64,9 @@ public class Log4jAppender extends AppenderSkeleton {
 
   private String hostname;
   private int port;
+  private boolean unsafeMode = false;
+  private long timeout = RpcClientConfigurationConstants
+    .DEFAULT_REQUEST_TIMEOUT_MILLIS;
 
   RpcClient rpcClient = null;
 
@@ -101,9 +105,14 @@ public class Log4jAppender extends AppenderSkeleton {
     //setup by setting hostname and port and then calling activateOptions
     //or this appender object was closed by calling close(), so we throw an
     //exception to show the appender is no longer accessible.
-    if(rpcClient == null){
-      throw new FlumeException("Cannot Append to Appender!" +
-          "Appender either closed or not setup correctly!");
+    if (rpcClient == null) {
+      String errorMsg = "Cannot Append to Appender! Appender either closed or" +
+        " not setup correctly!";
+      LogLog.error(errorMsg);
+      if (unsafeMode) {
+        return;
+      }
+      throw new FlumeException(errorMsg);
     }
 
     if(!rpcClient.isActive()){
@@ -138,6 +147,9 @@ public class Log4jAppender extends AppenderSkeleton {
     } catch (EventDeliveryException e) {
       String msg = "Flume append() failed.";
       LogLog.error(msg);
+      if (unsafeMode) {
+        return;
+      }
       throw new FlumeException(msg + " Exception follows.", e);
     }
   }
@@ -152,11 +164,27 @@ public class Log4jAppender extends AppenderSkeleton {
    * @throws FlumeException if errors occur during close
    */
   @Override
-  public synchronized void close() throws FlumeException{
-    //Any append calls after this will result in an Exception.
+  public synchronized void close() throws FlumeException {
+    // Any append calls after this will result in an Exception.
     if (rpcClient != null) {
-      rpcClient.close();
-      rpcClient = null;
+      try {
+        rpcClient.close();
+      } catch (FlumeException ex) {
+        LogLog.error("Error while trying to close RpcClient.", ex);
+        if (unsafeMode) {
+          return;
+        }
+        throw ex;
+      } finally {
+        rpcClient = null;
+      }
+    } else {
+      String errorMsg = "Flume log4jappender already closed!";
+      LogLog.error(errorMsg);
+      if(unsafeMode) {
+        return;
+      }
+      throw new FlumeException(errorMsg);
     }
   }
 
@@ -184,24 +212,54 @@ public class Log4jAppender extends AppenderSkeleton {
   public void setPort(int port){
     this.port = port;
   }
+
+  public void setUnsafeMode(boolean unsafeMode) {
+    this.unsafeMode = unsafeMode;
+  }
+
+  public boolean getUnsafeMode() {
+    return unsafeMode;
+  }
+
+  public void setTimeout(long timeout) {
+    this.timeout = timeout;
+  }
+
+  public long getTimeout() {
+    return this.timeout;
+  }
+
+
   /**
    * Activate the options set using <tt>setPort()</tt>
    * and <tt>setHostname()</tt>
+   *
    * @throws FlumeException if the <tt>hostname</tt> and
-   *  <tt>port</tt> combination is invalid.
+   *                        <tt>port</tt> combination is invalid.
    */
   @Override
-  public void activateOptions() throws FlumeException{
+  public void activateOptions() throws FlumeException {
+    Properties props = new Properties();
+    props.setProperty(RpcClientConfigurationConstants.CONFIG_HOSTS, "h1");
+    props.setProperty(RpcClientConfigurationConstants.CONFIG_HOSTS_PREFIX + "h1",
+      hostname + ":" + port);
+    props.setProperty(RpcClientConfigurationConstants.CONFIG_CONNECT_TIMEOUT,
+     String.valueOf(timeout));
+    props.setProperty(RpcClientConfigurationConstants.CONFIG_REQUEST_TIMEOUT,
+      String.valueOf(timeout));
     try {
-      rpcClient = RpcClientFactory.getDefaultInstance(hostname, port);
+      rpcClient = RpcClientFactory.getInstance(props);
+      if (layout != null) {
+        layout.activateOptions();
+      }
     } catch (FlumeException e) {
       String errormsg = "RPC client creation failed! " +
-          e.getMessage();
+        e.getMessage();
       LogLog.error(errormsg);
+      if (unsafeMode) {
+        return;
+      }
       throw e;
-    }
-    if(layout != null) {
-      layout.activateOptions();
     }
   }
 
